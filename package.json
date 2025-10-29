@@ -28,5 +28,8 @@
     "test": "stratus test",
     "test-coverage": "stratus test --coverage",
     "test-watch": "stratus test --watch"
+  },
+  "devDependencies": {
+    "pkg-pr-new": "^0.0.60"
   }
 }
