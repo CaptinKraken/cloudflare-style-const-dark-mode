@@ -1,0 +1,50 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "alwaysStrict": true,
+    "baseUrl": ".",
+    "declaration": true,
+    "esModuleInterop": true,
+    "incremental": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "lib": [
+      "es2017",
+      "es2018.promise",
+      "es2019",
+      "es2020.promise",
+      "ES2021.String",
+      "dom",
+      "dom.iterable",
+      "esnext.asynciterable",
+      "webworker"
+    ],
+    "module": "esnext",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "noImplicitAny": false,
+    "noImplicitThis": true,
+    "noUnusedLocals": true,
+    "paths": {
+      "@cloudflare/*": [
+        "src/common/chart/*/src",
+        "src/common/component/*/src",
+        "src/common/constants/*/src",
+        "src/common/style/*/src",
+        "src/common/testing/*/src",
+        "src/common/util/*/src",
+        "src/dash/core/*/src",
+        "src/dash/onboarding/*/src",
+        "node_modules/@cloudflare/*"
+      ]
+    },
+    "preserveConstEnums": true,
+    "resolveJsonModule": true,
+    "strictFunctionTypes": true,
+    "strictNullChecks": true,
+    "strictPropertyInitialization": true,
+    "target": "esnext"
+  },
+  "exclude": ["node_modules", "./src/**/__tests__", "dist"],
+  "include": ["./src/**/*.ts", "./src/**/*.tsx", "./types/*.d.ts"]
+}

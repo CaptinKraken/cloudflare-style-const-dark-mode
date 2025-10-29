@@ -1,4 +1,4 @@
-import { isDarkMode, modeTransitionTime } from './utils';
+import { isDarkMode } from './darkMode';
 import lightColors from './colors/light';
 import darkColors from './colors/dark';
 import mixins from './mixins';
@@ -25,23 +25,27 @@ var colors = {
     twitter: '#00aced',
     facebook: '#3b5998'
   }
-}; // Ensure that the type consists of only colors that appear in both light
+};
+
+// Ensure that the type consists of only colors that appear in both light
 // and dark modes
 
 var lightColorOverrides = {};
-var darkColorOverrides = {}; // Create getters for the colors that will change between dark and light mode.
+var darkColorOverrides = {};
+
+// Create getters for the colors that will change between dark and light mode.
 // This assumes lightColors and darkColors will contain the same set of
 // properties.
-
 Object.keys(lightColors).forEach(key => {
   Object.defineProperty(colors, key, {
     get: function get() {
       var darkMode = isDarkMode();
       var colors = darkMode ? darkColors[key] : lightColors[key];
       var colorOverrides = darkMode ? darkColorOverrides : lightColorOverrides;
-      var overrides = colorOverrides === null || colorOverrides === void 0 ? void 0 : colorOverrides[key]; // TODO Make more efficient by caching the merged array rather than
-      // continually recreating it
+      var overrides = colorOverrides === null || colorOverrides === void 0 ? void 0 : colorOverrides[key];
 
+      // TODO Make more efficient by caching the merged array rather than
+      // continually recreating it
       if (overrides !== null && overrides !== void 0 && overrides.length) {
         var colorsWithOverrides = [...colors];
         overrides.forEach((color, index) => {
@@ -51,7 +55,6 @@ Object.keys(lightColors).forEach(key => {
         });
         return colorsWithOverrides;
       }
-
       return colors;
     },
     enumerable: true
@@ -59,17 +62,14 @@ Object.keys(lightColors).forEach(key => {
 });
 export var setColorOverride = (color, index, value) => {
   var colorOverrides = isDarkMode() ? darkColorOverrides : lightColorOverrides;
-
   if (value) {
     if (!colorOverrides[color]) {
       colorOverrides[color] = [];
     }
-
     colorOverrides[color][index] = value;
   } else {
     var _colorOverrides$color;
-
-    (_colorOverrides$color = colorOverrides[color]) === null || _colorOverrides$color === void 0 ? true : delete _colorOverrides$color[index];
+    (_colorOverrides$color = colorOverrides[color]) === null || _colorOverrides$color === void 0 || delete _colorOverrides$color[index];
   }
 };
 export var revertColorOverrides = () => {
@@ -78,7 +78,6 @@ export var revertColorOverrides = () => {
 };
 export var fontSizes = [10, 12, 14, 16, 20, 24, 32, 48, 64, 80];
 var theme = {
-  modeTransitionTime,
   breakpoints: {
     mobile: '218px',
     mobileWide: '487px',

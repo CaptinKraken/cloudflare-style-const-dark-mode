@@ -1,0 +1,15 @@
+.jest
+.yarn
+node_modules
+es
+lib
+browser
+htdocs
+dist
+deps.js
+src/apps/**/parser/grammar.js
+src/apps/dash/react/shims
+src/apps/devguide/workers-site/worker/**/*.js
+DOCUMENTATION.js
+**/*.d.ts
+src/common/component/component-icon/src/reactsvgs

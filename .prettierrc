@@ -1,0 +1,21 @@
+{
+  "trailingComma": "none",
+  "singleQuote": true,
+  "htmlWhitespaceSensitivity": "ignore",
+  "arrowParens": "avoid",
+  "overrides": [
+    {
+      "files": [
+        "src/apps/extension-theme-as-css/**",
+        "src/apps/workers-ninjapanel-ui/**",
+        "src/common/util/util-routes/**",
+        "src/apps/dash/react/pages/home/domain-registration/**",
+        "src/apps/dash/react/pages/onboarding/onboarding-domain-transfer/**"
+      ],
+      "options": {
+        "semi": false,
+        "trailingComma": "all"
+      }
+    }
+  ]
+}
