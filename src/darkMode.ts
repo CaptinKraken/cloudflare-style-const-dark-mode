@@ -6,10 +6,19 @@
  * @module darkMode
  */
 
-let darkModeClassName = 'dark-mode';
+import {
+  CLOUDFLARE_APEX_HOST,
+  CLOUDFLARE_DOMAIN_SUFFIX,
+  COOKIE_POLL_INTERVAL,
+  DARK_MODE_BROADCAST_CHANNEL,
+  DARK_MODE_COOKIE_NAME,
+  DARK_MODE_MESSAGE_TYPE,
+  DEFAULT_DARK_MODE_CLASS,
+  LOCAL_DEV_HOSTS,
+  TRUSTED_CLOUDFLARE_ORIGINS
+} from './constants';
 
-// Cookie name for cross-subdomain dark mode sync
-const DARK_MODE_COOKIE_NAME = 'cf_dark_mode';
+let darkModeClassName = DEFAULT_DARK_MODE_CLASS;
 
 /**
  * Get a cookie value by name
@@ -37,8 +46,9 @@ const setCookie = (name: string, value: string, days = 365) => {
   // Determine if we're on a cloudflare.com domain
   const hostname = window.location.hostname;
   const isCloudflare =
-    hostname.endsWith('.cloudflare.com') || hostname === 'cloudflare.com';
-  const domain = isCloudflare ? '.cloudflare.com' : '';
+    hostname.endsWith(CLOUDFLARE_DOMAIN_SUFFIX) ||
+    hostname === CLOUDFLARE_APEX_HOST;
+  const domain = isCloudflare ? CLOUDFLARE_DOMAIN_SUFFIX : '';
 
   document.cookie = `${name}=${encodeURIComponent(
     value
@@ -71,10 +81,18 @@ const classList =
  * setDarkModeKey('theme-dark');
  */
 export const setDarkModeKey = (newKey: string, updateStorage = true) => {
+  if (!newKey || newKey === darkModeClassName) {
+    return;
+  }
+
   const prevKey = darkModeClassName;
   darkModeClassName = newKey;
 
   if (updateStorage) {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
     if (localStorage[newKey]) {
       // If there's a setting stored for the new key, use it.
       setDarkMode(localStorage[newKey], true);
@@ -137,6 +155,7 @@ class DarkModeSyncManager {
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private storageEventHandler: ((e: StorageEvent) => void) | null = null;
   private messageEventHandler: ((e: MessageEvent) => void) | null = null;
+  private broadcastChannel: BroadcastChannel | null = null;
 
   /**
    * Initialize all sync mechanisms and return cleanup function
@@ -158,6 +177,7 @@ class DarkModeSyncManager {
     this.setupStorageSync();
     this.setupCookiePolling();
     this.setupPostMessageSync();
+    this.setupBroadcastChannel();
 
     // 4. Return cleanup function
     return () => this.cleanup();
@@ -242,16 +262,10 @@ class DarkModeSyncManager {
    * Set up cookie polling for cross-subdomain sync
    */
   private setupCookiePolling() {
-    this.pollingIntervalId = setInterval(() => {
-      const cookieValue = getCookie(DARK_MODE_COOKIE_NAME) as DarkModeSettings;
-      if (
-        cookieValue &&
-        Object.values(DarkModeSettings).includes(cookieValue) &&
-        cookieValue !== this.currentSetting
-      ) {
-        this.updateSetting(cookieValue, false); // Don't re-sync to avoid loops
-      }
-    }, 1000);
+    this.pollingIntervalId = setInterval(
+      () => this.checkCookieForUpdates(),
+      COOKIE_POLL_INTERVAL
+    );
   }
 
   /**
@@ -259,15 +273,13 @@ class DarkModeSyncManager {
    */
   private setupPostMessageSync() {
     this.messageEventHandler = (event: MessageEvent) => {
-      // Security: Only accept from cloudflare.com origins
-      if (
-        !event.origin.endsWith('.cloudflare.com') &&
-        event.origin !== 'https://cloudflare.com'
-      ) {
+      if (!this.isTrustedOrigin(event.origin)) {
+        // Opportunistically check cookies so fallback stays responsive
+        this.checkCookieForUpdates();
         return;
       }
 
-      if (event.data?.type === 'cf-dark-mode-sync') {
+      if (event.data?.type === DARK_MODE_MESSAGE_TYPE) {
         const newSetting = event.data.setting as DarkModeSettings;
         if (Object.values(DarkModeSettings).includes(newSetting)) {
           this.updateSetting(newSetting, false); // Don't re-sync to avoid loops
@@ -283,7 +295,14 @@ class DarkModeSyncManager {
   private broadcastToIframes(setting: DarkModeSettings) {
     if (typeof window === 'undefined') return;
 
-    const message = { type: 'cf-dark-mode-sync', setting };
+    const message = { type: DARK_MODE_MESSAGE_TYPE, setting };
+
+    // BroadcastChannel provides immediate same-origin sync where supported
+    try {
+      this.broadcastChannel?.postMessage(message);
+    } catch (e) {
+      // No-op if channel unavailable
+    }
 
     // Notify all iframes
     document.querySelectorAll('iframe').forEach(iframe => {
@@ -320,7 +339,72 @@ class DarkModeSyncManager {
       window.removeEventListener('message', this.messageEventHandler);
       this.messageEventHandler = null;
     }
+    if (this.broadcastChannel) {
+      this.broadcastChannel.close();
+      this.broadcastChannel = null;
+    }
     this.isInitialized = false;
+  }
+
+  private setupBroadcastChannel() {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+      return;
+    }
+
+    // Close existing channel if re-initialized
+    this.broadcastChannel?.close();
+    this.broadcastChannel = new BroadcastChannel(DARK_MODE_BROADCAST_CHANNEL);
+    this.broadcastChannel.onmessage = event => {
+      const message = event.data;
+      const newSetting = message?.setting as DarkModeSettings;
+      if (
+        message?.type === DARK_MODE_MESSAGE_TYPE &&
+        Object.values(DarkModeSettings).includes(newSetting) &&
+        newSetting !== this.currentSetting
+      ) {
+        this.updateSetting(newSetting, false);
+      }
+    };
+  }
+
+  private isTrustedOrigin(origin: string): boolean {
+    if (!origin) return false;
+
+    try {
+      const url = new URL(origin);
+      const host = url.hostname;
+
+      if (origin === window.location.origin) {
+        return true;
+      }
+
+      if (TRUSTED_CLOUDFLARE_ORIGINS.has(origin)) {
+        return true;
+      }
+
+      if (host === CLOUDFLARE_APEX_HOST || host.endsWith(CLOUDFLARE_DOMAIN_SUFFIX)) {
+        return true;
+      }
+
+      if (isLocalDevelopment() && (LOCAL_DEV_HOSTS.has(host) || host === window.location.hostname)) {
+        return true;
+      }
+    } catch (e) {
+      return false;
+    }
+
+    return false;
+  }
+
+  private checkCookieForUpdates() {
+    const cookieValue = getCookie(DARK_MODE_COOKIE_NAME) as DarkModeSettings;
+    if (
+      cookieValue &&
+      Object.values(DarkModeSettings).includes(cookieValue) &&
+      cookieValue !== this.currentSetting
+    ) {
+      this.updateSetting(cookieValue, false);
+    }
   }
 }
 
@@ -475,7 +559,7 @@ export const getDarkModeFromCookieHeader = (
 export const getInlineThemeScript = (
   fallbackSetting: DarkModeSettings = DarkModeSettings.OFF
 ): string => {
-  return `(function(){try{var c=document.cookie.match(/cf_dark_mode=([^;]*)/);var v=c?decodeURIComponent(c[1]):'${fallbackSetting}';var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('dark-mode');}catch(e){}})();`;
+  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var v=c?decodeURIComponent(c[1]):'${fallbackSetting}';var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');}catch(e){}})();`;
 };
 
 /**

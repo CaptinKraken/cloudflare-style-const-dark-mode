@@ -1,0 +1,9 @@
+export const DEFAULT_DARK_MODE_CLASS = 'dark-mode';
+export const DARK_MODE_COOKIE_NAME = 'cf_dark_mode';
+export const DARK_MODE_MESSAGE_TYPE = 'cf-dark-mode-sync';
+export const DARK_MODE_BROADCAST_CHANNEL = 'cf-dark-mode';
+export const COOKIE_POLL_INTERVAL = 300;
+export const CLOUDFLARE_APEX_HOST = 'cloudflare.com';
+export const CLOUDFLARE_DOMAIN_SUFFIX = '.cloudflare.com';
+export const TRUSTED_CLOUDFLARE_ORIGINS = new Set(['https://cloudflare.com']);
+export const LOCAL_DEV_HOSTS = new Set(['localhost', '127.0.0.1', '0.0.0.0']);
