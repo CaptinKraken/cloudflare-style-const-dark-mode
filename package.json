@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "bash scripts/build.sh",
-    "build:types": "tsc -p tsconfig.build.json",
+    "build:types": "tsc -p tsconfig.publish.json",
     "clean": "rimraf es lib dist",
     "lint": "eslint \"**/*.{ts,tsx}\""
   },
@@ -35,8 +35,9 @@
     "@babel/preset-env": "^7.20.7",
     "@babel/preset-react": "^7.20.7",
     "@babel/preset-typescript": "^7.20.7",
-    "pkg-pr-new": "^0.0.60",
-    "babel-loader": "^8.2.5"
+    "babel-loader": "^8.2.5",
+    "babel-plugin-dynamic-import-node": "^2.3.3",
+    "pkg-pr-new": "^0.0.60"
   },
   "resolutions": {
     "babel-loader": "8.0.4",
