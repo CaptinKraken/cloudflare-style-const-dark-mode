@@ -1,0 +1,7 @@
+node_modules
+*.log
+coverage
+__tests__
+example
+karma.conf.js
+src
