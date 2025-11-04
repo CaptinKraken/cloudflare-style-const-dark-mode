@@ -11,6 +11,7 @@ import {
   CLOUDFLARE_DOMAIN_SUFFIX,
   COOKIE_POLL_INTERVAL,
   DARK_MODE_BROADCAST_CHANNEL,
+  DARK_MODE_CHANGE_EVENT,
   DARK_MODE_COOKIE_NAME,
   DARK_MODE_MESSAGE_TYPE,
   DEFAULT_DARK_MODE_CLASS,
@@ -21,16 +22,34 @@ import {
 let darkModeClassName = DEFAULT_DARK_MODE_CLASS;
 
 /**
- * Get a cookie value by name
+ * Get the dark mode cookie value including timestamp
+ * Cookie format: "value:timestamp" (e.g., "on:1699564800000")
+ * Returns { value, timestamp } or null
  */
-const getCookie = (name: string): string | null => {
+const getDarkModeCookieWithTimestamp = (): {
+  value: string;
+  timestamp: number;
+} | null => {
   if (typeof document === 'undefined') return null;
+
   const matches = document.cookie.match(
     new RegExp(
-      '(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'
+      '(?:^|; )' +
+        DARK_MODE_COOKIE_NAME.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') +
+        '=([^;]*)'
     )
   );
-  return matches ? decodeURIComponent(matches[1]) : null;
+
+  if (!matches) return null;
+
+  const cookieValue = decodeURIComponent(matches[1]);
+  const parts = cookieValue.split(':');
+
+  // Format: value:timestamp or just value (backward compat)
+  const settingValue = parts[0];
+  const timestamp = parts[1] ? parseInt(parts[1], 10) : 0;
+
+  return { value: settingValue, timestamp };
 };
 
 /**
@@ -57,10 +76,85 @@ const setCookie = (name: string, value: string, days = 365) => {
   }SameSite=Lax; Secure`;
 };
 
+/**
+ * Set the dark mode cookie with both value and timestamp
+ * Format: value:timestamp (e.g., "on:1699564800000")
+ */
+const setDarkModeCookie = (value: string, timestamp: number) => {
+  const cookieValue = `${value}:${timestamp}`;
+  setCookie(DARK_MODE_COOKIE_NAME, cookieValue);
+};
+
+/**
+ * Translate between Cloudflare and Astro naming conventions
+ */
+const translateSetting = (
+  value: string,
+  fromStrategy: DarkModeNamingStrategy,
+  toStrategy: DarkModeNamingStrategy
+): string => {
+  if (fromStrategy === toStrategy) return value;
+
+  const translations: Record<string, Record<string, string>> = {
+    [DarkModeNamingStrategy.CLOUDFLARE]: {
+      on: 'dark',
+      off: 'light',
+      system: 'auto'
+    },
+    [DarkModeNamingStrategy.ASTRO]: {
+      dark: 'on',
+      light: 'off',
+      auto: 'system'
+    }
+  };
+
+  return translations[fromStrategy]?.[value] || value;
+};
+
 export enum DarkModeSettings {
   ON = 'on',
   OFF = 'off',
   SYSTEM = 'system'
+}
+
+/**
+ * Alternative naming strategies for dark mode settings
+ * Useful for frameworks like Astro/Starlight that use different conventions
+ */
+export enum DarkModeNamingStrategy {
+  /** Cloudflare default: 'on' | 'off' | 'system' */
+  CLOUDFLARE = 'cloudflare',
+  /** Astro/Starlight style: 'dark' | 'light' | 'auto' */
+  ASTRO = 'astro'
+}
+
+/**
+ * Type for Astro-style dark mode settings
+ */
+export type AstroDarkModeSettings = 'dark' | 'light' | 'auto';
+
+/**
+ * Event detail for dark mode change events
+ */
+export interface DarkModeChangeEventDetail {
+  /** The dark mode setting value */
+  setting: DarkModeSettings;
+  /** Whether dark mode is currently active (computed from setting + system preference) */
+  isDark: boolean;
+  /** Timestamp of when this change occurred */
+  timestamp: number;
+  /** The naming strategy being used */
+  namingStrategy: DarkModeNamingStrategy;
+  /** The setting value in the current naming strategy */
+  value: string;
+}
+
+/**
+ * Custom event type for dark mode changes
+ */
+export interface DarkModeChangeEvent
+  extends CustomEvent<DarkModeChangeEventDetail> {
+  type: typeof DARK_MODE_CHANGE_EVENT;
 }
 
 // Defensive checks in case component library is used outside the browser
@@ -151,24 +245,38 @@ export const setDarkMode = (
  */
 class DarkModeSyncManager {
   private currentSetting: DarkModeSettings = DarkModeSettings.OFF;
+  private currentTimestamp: number = 0;
+  private namingStrategy: DarkModeNamingStrategy =
+    DarkModeNamingStrategy.CLOUDFLARE;
   private isInitialized = false;
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private storageEventHandler: ((e: StorageEvent) => void) | null = null;
   private messageEventHandler: ((e: MessageEvent) => void) | null = null;
   private broadcastChannel: BroadcastChannel | null = null;
+  private eventListeners: Set<(detail: DarkModeChangeEventDetail) => void> =
+    new Set();
 
   /**
    * Initialize all sync mechanisms and return cleanup function
    */
-  initialize(): () => void {
+  initialize(options?: {
+    namingStrategy?: DarkModeNamingStrategy;
+  }): () => void {
     if (this.isInitialized || typeof window === 'undefined') {
       return () => {}; // Already initialized or not in browser
     }
 
     this.isInitialized = true;
 
+    // Set naming strategy if provided
+    if (options?.namingStrategy) {
+      this.namingStrategy = options.namingStrategy;
+    }
+
     // 1. Read initial setting (cookie → localStorage → default)
-    this.currentSetting = this.readInitialSetting();
+    const { setting, timestamp } = this.readInitialSetting();
+    this.currentSetting = setting;
+    this.currentTimestamp = timestamp;
 
     // 2. Apply the setting
     this.applySetting(this.currentSetting, false);
@@ -186,9 +294,15 @@ class DarkModeSyncManager {
   /**
    * Update dark mode setting and sync across all methods
    */
-  updateSetting(setting: DarkModeSettings, shouldSync: boolean = true) {
+  updateSetting(
+    setting: DarkModeSettings,
+    shouldSync: boolean = true,
+    timestamp?: number
+  ) {
+    const newTimestamp = timestamp || Date.now();
     this.currentSetting = setting;
-    this.applySetting(setting, shouldSync);
+    this.currentTimestamp = newTimestamp;
+    this.applySetting(setting, shouldSync, newTimestamp);
   }
 
   /**
@@ -203,44 +317,65 @@ class DarkModeSyncManager {
   /**
    * Read initial setting: cookie → localStorage → default OFF
    */
-  private readInitialSetting(): DarkModeSettings {
+  private readInitialSetting(): {
+    setting: DarkModeSettings;
+    timestamp: number;
+  } {
     if (typeof localStorage === 'undefined') {
-      return DarkModeSettings.OFF;
+      return { setting: DarkModeSettings.OFF, timestamp: 0 };
     }
 
     // Priority 1: Cookie (cross-subdomain)
-    const cookieValue = getCookie(DARK_MODE_COOKIE_NAME) as DarkModeSettings;
-    if (cookieValue && Object.values(DarkModeSettings).includes(cookieValue)) {
-      return cookieValue;
+    const cookieData = getDarkModeCookieWithTimestamp();
+    if (
+      cookieData &&
+      Object.values(DarkModeSettings).includes(
+        cookieData.value as DarkModeSettings
+      )
+    ) {
+      return {
+        setting: cookieData.value as DarkModeSettings,
+        timestamp: cookieData.timestamp
+      };
     }
 
     // Priority 2: localStorage (backwards compatibility)
     const localValue = localStorage[darkModeClassName] as DarkModeSettings;
     if (localValue && Object.values(DarkModeSettings).includes(localValue)) {
       // Sync to cookie for future cross-subdomain access
-      setCookie(DARK_MODE_COOKIE_NAME, localValue);
-      return localValue;
+      const timestamp = Date.now();
+      setDarkModeCookie(localValue, timestamp);
+      return { setting: localValue, timestamp };
     }
 
-    return DarkModeSettings.OFF;
+    return { setting: DarkModeSettings.OFF, timestamp: 0 };
   }
 
   /**
    * Apply setting to DOM and optionally sync to storage
    */
-  private applySetting(setting: DarkModeSettings, shouldSync: boolean) {
+  private applySetting(
+    setting: DarkModeSettings,
+    shouldSync: boolean,
+    timestamp?: number
+  ) {
+    const ts = timestamp || this.currentTimestamp;
+
     // Update DOM
-    toggleDarkMode(
+    const isDark =
       setting === DarkModeSettings.ON ||
-        (setting === DarkModeSettings.SYSTEM && systemDarkMode)
-    );
+      (setting === DarkModeSettings.SYSTEM && systemDarkMode);
+    toggleDarkMode(isDark);
 
     // Sync to storage if requested
     if (shouldSync && typeof localStorage !== 'undefined') {
       localStorage[darkModeClassName] = setting;
-      setCookie(DARK_MODE_COOKIE_NAME, setting);
-      this.broadcastToIframes(setting);
+      setDarkModeCookie(setting, ts);
+      this.broadcastToIframes(setting, ts);
     }
+
+    // Emit custom event for consuming applications
+    this.emitChangeEvent(setting, isDark, ts);
   }
 
   /**
@@ -281,8 +416,12 @@ class DarkModeSyncManager {
 
       if (event.data?.type === DARK_MODE_MESSAGE_TYPE) {
         const newSetting = event.data.setting as DarkModeSettings;
+        const timestamp = event.data.timestamp as number;
         if (Object.values(DarkModeSettings).includes(newSetting)) {
-          this.updateSetting(newSetting, false); // Don't re-sync to avoid loops
+          // Only update if timestamp is newer
+          if (!timestamp || timestamp > this.currentTimestamp) {
+            this.updateSetting(newSetting, false, timestamp); // Don't re-sync to avoid loops
+          }
         }
       }
     };
@@ -292,10 +431,10 @@ class DarkModeSyncManager {
   /**
    * Broadcast setting to all iframes and parent (if in iframe)
    */
-  private broadcastToIframes(setting: DarkModeSettings) {
+  private broadcastToIframes(setting: DarkModeSettings, timestamp: number) {
     if (typeof window === 'undefined') return;
 
-    const message = { type: DARK_MODE_MESSAGE_TYPE, setting };
+    const message = { type: DARK_MODE_MESSAGE_TYPE, setting, timestamp };
 
     // BroadcastChannel provides immediate same-origin sync where supported
     try {
@@ -357,12 +496,13 @@ class DarkModeSyncManager {
     this.broadcastChannel.onmessage = event => {
       const message = event.data;
       const newSetting = message?.setting as DarkModeSettings;
+      const timestamp = message?.timestamp as number;
       if (
         message?.type === DARK_MODE_MESSAGE_TYPE &&
         Object.values(DarkModeSettings).includes(newSetting) &&
-        newSetting !== this.currentSetting
+        (!timestamp || timestamp > this.currentTimestamp)
       ) {
-        this.updateSetting(newSetting, false);
+        this.updateSetting(newSetting, false, timestamp);
       }
     };
   }
@@ -382,11 +522,17 @@ class DarkModeSyncManager {
         return true;
       }
 
-      if (host === CLOUDFLARE_APEX_HOST || host.endsWith(CLOUDFLARE_DOMAIN_SUFFIX)) {
+      if (
+        host === CLOUDFLARE_APEX_HOST ||
+        host.endsWith(CLOUDFLARE_DOMAIN_SUFFIX)
+      ) {
         return true;
       }
 
-      if (isLocalDevelopment() && (LOCAL_DEV_HOSTS.has(host) || host === window.location.hostname)) {
+      if (
+        isLocalDevelopment() &&
+        (LOCAL_DEV_HOSTS.has(host) || host === window.location.hostname)
+      ) {
         return true;
       }
     } catch (e) {
@@ -397,14 +543,97 @@ class DarkModeSyncManager {
   }
 
   private checkCookieForUpdates() {
-    const cookieValue = getCookie(DARK_MODE_COOKIE_NAME) as DarkModeSettings;
+    const cookieData = getDarkModeCookieWithTimestamp();
     if (
-      cookieValue &&
-      Object.values(DarkModeSettings).includes(cookieValue) &&
-      cookieValue !== this.currentSetting
+      cookieData &&
+      Object.values(DarkModeSettings).includes(
+        cookieData.value as DarkModeSettings
+      ) &&
+      cookieData.timestamp > this.currentTimestamp
     ) {
-      this.updateSetting(cookieValue, false);
+      this.updateSetting(
+        cookieData.value as DarkModeSettings,
+        false,
+        cookieData.timestamp
+      );
     }
+  }
+
+  /**
+   * Emit a custom event for consuming applications
+   */
+  private emitChangeEvent(
+    setting: DarkModeSettings,
+    isDark: boolean,
+    timestamp: number
+  ) {
+    const value = translateSetting(
+      setting,
+      DarkModeNamingStrategy.CLOUDFLARE,
+      this.namingStrategy
+    );
+
+    const detail: DarkModeChangeEventDetail = {
+      setting,
+      isDark,
+      timestamp,
+      namingStrategy: this.namingStrategy,
+      value
+    };
+
+    // Notify registered listeners
+    this.eventListeners.forEach(listener => {
+      try {
+        listener(detail);
+      } catch (e) {
+        console.error('Error in dark mode change listener:', e);
+      }
+    });
+
+    // Dispatch custom DOM event
+    if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+      const event = new CustomEvent(DARK_MODE_CHANGE_EVENT, {
+        detail,
+        bubbles: true,
+        cancelable: false
+      }) as DarkModeChangeEvent;
+      window.dispatchEvent(event);
+    }
+  }
+
+  /**
+   * Add an event listener for dark mode changes
+   */
+  addEventListener(listener: (detail: DarkModeChangeEventDetail) => void) {
+    this.eventListeners.add(listener);
+  }
+
+  /**
+   * Remove an event listener
+   */
+  removeEventListener(listener: (detail: DarkModeChangeEventDetail) => void) {
+    this.eventListeners.delete(listener);
+  }
+
+  /**
+   * Get the current timestamp
+   */
+  getTimestamp(): number {
+    return this.currentTimestamp;
+  }
+
+  /**
+   * Set the naming strategy
+   */
+  setNamingStrategy(strategy: DarkModeNamingStrategy) {
+    this.namingStrategy = strategy;
+  }
+
+  /**
+   * Get the current naming strategy
+   */
+  getNamingStrategy(): DarkModeNamingStrategy {
+    return this.namingStrategy;
   }
 }
 
@@ -427,17 +656,30 @@ const syncManager = new DarkModeSyncManager();
  * For SSR apps: Call this in useEffect after component mounts
  * For CSR apps: This is called automatically
  *
+ * @param options - Configuration options
+ * @param options.namingStrategy - Which naming convention to use (CLOUDFLARE or ASTRO)
  * @returns Cleanup function to stop all sync mechanisms
  *
  * @example
- * // React SSR app
+ * // React SSR app with Cloudflare naming (default)
  * useEffect(() => {
  *   const cleanup = initDarkMode();
  *   return cleanup;
  * }, []);
+ *
+ * @example
+ * // React SSR app with Astro/Starlight naming
+ * useEffect(() => {
+ *   const cleanup = initDarkMode({
+ *     namingStrategy: DarkModeNamingStrategy.ASTRO
+ *   });
+ *   return cleanup;
+ * }, []);
  */
-export const initDarkMode = (): (() => void) => {
-  return syncManager.initialize();
+export const initDarkMode = (options?: {
+  namingStrategy?: DarkModeNamingStrategy;
+}): (() => void) => {
+  return syncManager.initialize(options);
 };
 
 // Auto-initialize for non-SSR apps (backwards compatibility)
@@ -532,7 +774,9 @@ export const getDarkModeFromCookieHeader = (
     new RegExp('(?:^|; )' + DARK_MODE_COOKIE_NAME + '=([^;]*)')
   );
   if (match) {
-    const value = decodeURIComponent(match[1]) as DarkModeSettings;
+    const cookieValue = decodeURIComponent(match[1]);
+    // Parse format: "value:timestamp" or just "value" (backward compat)
+    const value = cookieValue.split(':')[0] as DarkModeSettings;
     if (Object.values(DarkModeSettings).includes(value)) {
       return value;
     }
@@ -559,7 +803,7 @@ export const getDarkModeFromCookieHeader = (
 export const getInlineThemeScript = (
   fallbackSetting: DarkModeSettings = DarkModeSettings.OFF
 ): string => {
-  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var v=c?decodeURIComponent(c[1]):'${fallbackSetting}';var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');}catch(e){}})();`;
+  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var cv=c?decodeURIComponent(c[1]):'${fallbackSetting}';var v=cv.split(':')[0];var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');}catch(e){}})();`;
 };
 
 /**
@@ -634,4 +878,145 @@ export const observeDarkMode = (fn: (darkMode?: boolean) => void) => {
   }
 
   observer?.observe(document.documentElement, { attributes: true });
+};
+
+// ============================================================================
+// Enhanced Integration API - For consuming applications
+// ============================================================================
+
+/**
+ * Add an event listener for dark mode changes.
+ * This is the recommended way for consuming applications to react to dark mode changes.
+ * The library handles all storage/syncing internally - apps just react to events.
+ *
+ * @param listener - Callback that receives detailed dark mode change information
+ * @returns Cleanup function to remove the listener
+ *
+ * @example
+ * // React component
+ * useEffect(() => {
+ *   const cleanup = addDarkModeChangeListener((detail) => {
+ *     console.log('Dark mode changed:', detail.isDark);
+ *     console.log('Setting value:', detail.value); // respects naming strategy
+ *     console.log('Timestamp:', detail.timestamp);
+ *
+ *     // Update database if needed
+ *     if (user.isLoggedIn) {
+ *       updateUserPreference(detail.value, detail.timestamp);
+ *     }
+ *   });
+ *   return cleanup;
+ * }, []);
+ *
+ * @example
+ * // Using DOM events instead
+ * window.addEventListener('cf-dark-mode-change', (event) => {
+ *   console.log('Dark mode:', event.detail.isDark);
+ * });
+ */
+export const addDarkModeChangeListener = (
+  listener: (detail: DarkModeChangeEventDetail) => void
+): (() => void) => {
+  syncManager.addEventListener(listener);
+  return () => syncManager.removeEventListener(listener);
+};
+
+/**
+ * Remove a dark mode change listener
+ *
+ * @param listener - The listener function to remove
+ */
+export const removeDarkModeChangeListener = (
+  listener: (detail: DarkModeChangeEventDetail) => void
+) => {
+  syncManager.removeEventListener(listener);
+};
+
+/**
+ * Get the timestamp of the last dark mode change.
+ * Useful for determining if a database update is needed.
+ *
+ * @returns Unix timestamp in milliseconds
+ *
+ * @example
+ * // Check if local value is newer than database value
+ * const localTimestamp = getDarkModeTimestamp();
+ * if (localTimestamp > dbUser.darkModeUpdatedAt) {
+ *   // Local value is newer, update database
+ *   await updateDarkModeInDatabase(getDarkModeSetting(), localTimestamp);
+ * }
+ */
+export const getDarkModeTimestamp = (): number => {
+  return syncManager.getTimestamp();
+};
+
+/**
+ * Set the dark mode naming strategy.
+ * Changes how the library reports values in events (e.g., 'on' vs 'dark').
+ *
+ * @param strategy - The naming strategy to use
+ *
+ * @example
+ * // Use Astro/Starlight naming convention
+ * setDarkModeNamingStrategy(DarkModeNamingStrategy.ASTRO);
+ * // Now events will report 'dark', 'light', 'auto' instead of 'on', 'off', 'system'
+ */
+export const setDarkModeNamingStrategy = (strategy: DarkModeNamingStrategy) => {
+  syncManager.setNamingStrategy(strategy);
+};
+
+/**
+ * Get the current dark mode naming strategy
+ *
+ * @returns The current naming strategy
+ */
+export const getDarkModeNamingStrategy = (): DarkModeNamingStrategy => {
+  return syncManager.getNamingStrategy();
+};
+
+/**
+ * Translate a setting value between naming strategies
+ *
+ * @param value - The value to translate
+ * @param fromStrategy - Source naming strategy
+ * @param toStrategy - Target naming strategy
+ * @returns Translated value
+ *
+ * @example
+ * // Convert from Cloudflare to Astro naming
+ * const astroValue = translateDarkModeSetting('on', DarkModeNamingStrategy.CLOUDFLARE, DarkModeNamingStrategy.ASTRO);
+ * console.log(astroValue); // 'dark'
+ *
+ * @example
+ * // Convert from Astro to Cloudflare naming
+ * const cfValue = translateDarkModeSetting('auto', DarkModeNamingStrategy.ASTRO, DarkModeNamingStrategy.CLOUDFLARE);
+ * console.log(cfValue); // 'system'
+ */
+export const translateDarkModeSetting = (
+  value: string,
+  fromStrategy: DarkModeNamingStrategy,
+  toStrategy: DarkModeNamingStrategy
+): string => {
+  return translateSetting(value, fromStrategy, toStrategy);
+};
+
+/**
+ * Check if the local dark mode value is newer than a given timestamp.
+ * Useful for database sync logic.
+ *
+ * @param compareTimestamp - Timestamp to compare against (e.g., from database)
+ * @returns true if local value is newer
+ *
+ * @example
+ * // In your app's sync logic
+ * const needsUpdate = isDarkModeNewerThan(user.darkModeUpdatedAt);
+ * if (needsUpdate) {
+ *   await updateUserPreference({
+ *     darkMode: getDarkModeSetting(),
+ *     updatedAt: getDarkModeTimestamp()
+ *   });
+ * }
+ */
+export const isDarkModeNewerThan = (compareTimestamp: number): boolean => {
+  return syncManager.getTimestamp() > compareTimestamp;
 };

@@ -2,6 +2,7 @@ export const DEFAULT_DARK_MODE_CLASS = 'dark-mode';
 export const DARK_MODE_COOKIE_NAME = 'cf_dark_mode';
 export const DARK_MODE_MESSAGE_TYPE = 'cf-dark-mode-sync';
 export const DARK_MODE_BROADCAST_CHANNEL = 'cf-dark-mode';
+export const DARK_MODE_CHANGE_EVENT = 'cf-dark-mode-change';
 export const COOKIE_POLL_INTERVAL = 300;
 export const CLOUDFLARE_APEX_HOST = 'cloudflare.com';
 export const CLOUDFLARE_DOMAIN_SUFFIX = '.cloudflare.com';

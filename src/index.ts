@@ -6,7 +6,10 @@ import darkModeColorsV2 from './colors/darkScalesV2';
 import { alphaValues } from './colors/alpha';
 import { focusBoxShadow } from './mixins';
 import {
+  // Core types and enums
   DarkModeSettings,
+  DarkModeNamingStrategy,
+  // Core functions
   getDarkModeSetting,
   getDarkModeCookieName,
   getDarkModeFromCookieHeader,
@@ -19,7 +22,15 @@ import {
   resetDarkMode,
   setDarkMode,
   setDarkModeKey,
-  toggleDarkMode
+  toggleDarkMode,
+  // Enhanced integration API
+  addDarkModeChangeListener,
+  removeDarkModeChangeListener,
+  getDarkModeTimestamp,
+  setDarkModeNamingStrategy,
+  getDarkModeNamingStrategy,
+  translateDarkModeSetting,
+  isDarkModeNewerThan
 } from './darkMode';
 
 export {
@@ -42,6 +53,16 @@ export {
   // Dark mode utilities
   isLocalDevelopment,
   resetDarkMode,
+  // Enhanced integration API
+  addDarkModeChangeListener,
+  removeDarkModeChangeListener,
+  getDarkModeTimestamp,
+  setDarkModeNamingStrategy,
+  getDarkModeNamingStrategy,
+  translateDarkModeSetting,
+  isDarkModeNewerThan,
+  // Enums
+  DarkModeNamingStrategy,
   // Colors
   lightModeColors,
   lightModeColorsV2,
@@ -51,5 +72,8 @@ export {
   // Mixins
   focusBoxShadow
 };
+
+// Type-only exports for TypeScript isolatedModules
+export type { AstroDarkModeSettings, DarkModeChangeEventDetail, DarkModeChangeEvent } from './darkMode';
 
 export * from './variables';
