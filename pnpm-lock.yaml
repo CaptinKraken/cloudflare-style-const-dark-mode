@@ -31,7 +31,7 @@ importers:
         specifier: ^4.1.4
         version: 4.3.1
       react:
-        specifier: ^15.0.0-0 || ^16.0.0-0 || ^17.0.0-0
+        specifier: ^15.0.0-0 || ^16.0.0-0 || ^17.0.0-0 || ^18.0.0-0 || ^19.0.0-0
         version: 17.0.2
     devDependencies:
       '@babel/plugin-proposal-export-default-from':
