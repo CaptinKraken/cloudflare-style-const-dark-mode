@@ -21,6 +21,7 @@ import {
   observeDarkMode,
   resetDarkMode,
   setDarkMode,
+  setDarkModeFromStrategy,
   setDarkModeKey,
   toggleDarkMode,
   // Enhanced integration API
@@ -30,7 +31,8 @@ import {
   setDarkModeNamingStrategy,
   getDarkModeNamingStrategy,
   translateDarkModeSetting,
-  isDarkModeNewerThan
+  isDarkModeNewerThan,
+  normalizeToCloudflareFormat
 } from './darkMode';
 
 export {
@@ -40,6 +42,7 @@ export {
   isDarkMode,
   toggleDarkMode,
   setDarkMode,
+  setDarkModeFromStrategy,
   setDarkModeKey,
   observeDarkMode,
   getDarkModeSetting,
@@ -52,6 +55,7 @@ export {
   getInlineThemeScript,
   // Dark mode utilities
   isLocalDevelopment,
+  normalizeToCloudflareFormat,
   resetDarkMode,
   // Enhanced integration API
   addDarkModeChangeListener,

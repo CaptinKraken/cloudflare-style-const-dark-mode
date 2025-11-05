@@ -16,6 +16,7 @@ npm install @cloudflare/style-const
 - **Dark mode** - Cross-subdomain synchronized dark mode
 - **SSR support** - Works with React Router v7, Next.js, Remix, TanStack Start
 - **Framework agnostic** - Use with any React-based framework
+- **Astro/Starlight** - Full support with automatic naming strategy conversion
 
 ## Quick Start
 
@@ -54,12 +55,37 @@ export async function loader({ request }) {
 }
 ```
 
+### Astro/Starlight
+
+```typescript
+import { 
+  setDarkModeFromStrategy, 
+  DarkModeNamingStrategy,
+  getInlineThemeScript 
+} from '@cloudflare/style-const';
+
+// When user changes theme in Starlight
+function handleThemeChange(newTheme: 'dark' | 'light' | 'auto') {
+  // Automatically normalizes to Cloudflare format for cookie storage
+  // 'auto' → 'system', 'dark' → 'on', 'light' → 'off'
+  setDarkModeFromStrategy(newTheme, DarkModeNamingStrategy.ASTRO);
+}
+
+// Prevent FOUC with Astro/Starlight configuration
+const script = getInlineThemeScript('auto', {
+  namingStrategy: DarkModeNamingStrategy.ASTRO,
+  storageKey: 'starlight-theme',
+  themeAttribute: 'data-theme'
+});
+```
+
 ## Documentation
 
 | Guide | Purpose |
 |-------|---------|
+| **[INTEGRATION_GUIDE.md](./INTEGRATION_GUIDE.md)** | Event-based integration, naming strategies, Astro/Starlight cross-app sync |
 | **[DARK_MODE_SYNC.md](./DARK_MODE_SYNC.md)** | Complete API reference, framework examples, troubleshooting |
-| **[ADVANCED_USAGE.md](./ADVANCED_USAGE.md)** | Local dev, Tailwind CSS, testing, security, scalability |
+| **[ADVANCED_USAGE.md](./ADVANCED_USAGE.md)** | Local dev, Tailwind CSS, Astro/Starlight, testing, security, scalability |
 | **[MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md)** | Upgrade from 6.x to 7.0 |
 | **[COOKIE_CONSENT.md](./COOKIE_CONSENT.md)** | OneTrust configuration and legal compliance |
 

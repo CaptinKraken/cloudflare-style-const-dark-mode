@@ -31,6 +31,21 @@ export const translateSetting = (
 };
 
 /**
+ * Normalize a setting value to Cloudflare format (on/off/system)
+ * This ensures values from any naming strategy are stored consistently in cookies
+ */
+export const normalizeToCloudflareFormat = (
+  value: string,
+  fromStrategy: DarkModeNamingStrategy
+): string => {
+  if (fromStrategy === DarkModeNamingStrategy.CLOUDFLARE) {
+    return value;
+  }
+  // Convert from Astro to Cloudflare
+  return translateSetting(value, fromStrategy, DarkModeNamingStrategy.CLOUDFLARE);
+};
+
+/**
  * Check if running in local development environment.
  * Useful for debugging or conditional behavior.
  *

@@ -27,7 +27,7 @@ import {
   isDarkMode,
   toggleDarkMode
 } from './darkMode/dom';
-import { translateSetting, isLocalDevelopment } from './darkMode/utils';
+import { translateSetting, isLocalDevelopment, normalizeToCloudflareFormat } from './darkMode/utils';
 import {
   getDarkModeCookieName,
   getDarkModeFromRequest,
@@ -59,7 +59,7 @@ export { setDarkModeKey, isDarkMode, toggleDarkMode };
 export { getDarkModeCookieName, getDarkModeFromRequest, getDarkModeFromCookieHeader, getInlineThemeScript };
 
 // Re-export utilities
-export { isLocalDevelopment };
+export { isLocalDevelopment, normalizeToCloudflareFormat };
 
 const darkModeMatch =
   typeof window !== 'undefined' &&
@@ -82,6 +82,32 @@ export const setDarkMode = (
   updateStorage = true
 ) => {
   syncManager.updateSetting(darkMode, updateStorage);
+};
+
+/**
+ * Set dark mode from any naming strategy (Cloudflare or Astro/Starlight)
+ * Automatically normalizes to Cloudflare format for cookie storage
+ * This ensures 'auto' is stored as 'system' in the cookie for cross-app compatibility
+ *
+ * @param value - The setting value in the specified naming strategy
+ * @param strategy - The naming strategy of the value
+ * @param updateStorage - Whether to sync to storage (default: true)
+ *
+ * @example
+ * // From Astro/Starlight
+ * setDarkModeFromStrategy('auto', DarkModeNamingStrategy.ASTRO);
+ * // Stores as 'system' in cookie for other apps to read
+ *
+ * @example
+ * // From Cloudflare
+ * setDarkModeFromStrategy('system', DarkModeNamingStrategy.CLOUDFLARE);
+ */
+export const setDarkModeFromStrategy = (
+  value: string,
+  strategy: DarkModeNamingStrategy,
+  updateStorage = true
+) => {
+  syncManager.updateSettingFromStrategy(value, strategy, updateStorage);
 };
 
 // ============================================================================
@@ -156,6 +182,29 @@ class DarkModeSyncManager {
     this.currentSetting = setting;
     this.currentTimestamp = newTimestamp;
     this.applySetting(setting, shouldSync, newTimestamp);
+  }
+
+  /**
+   * Update dark mode setting from any naming strategy
+   * Automatically normalizes to Cloudflare format for cookie storage
+   * This ensures Astro/Starlight 'auto' is stored as 'system' in the cookie
+   */
+  updateSettingFromStrategy(
+    value: string,
+    strategy: DarkModeNamingStrategy,
+    shouldSync: boolean = true,
+    timestamp?: number
+  ) {
+    // Normalize to Cloudflare format for storage
+    const normalizedValue = translateSetting(
+      value,
+      strategy,
+      DarkModeNamingStrategy.CLOUDFLARE
+    );
+    
+    if (Object.values(DarkModeSettings).includes(normalizedValue as DarkModeSettings)) {
+      this.updateSetting(normalizedValue as DarkModeSettings, shouldSync, timestamp);
+    }
   }
 
   /**

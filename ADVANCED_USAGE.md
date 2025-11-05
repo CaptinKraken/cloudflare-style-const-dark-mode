@@ -529,6 +529,60 @@ export default function Root() {
 }
 ```
 
+### Astro/Starlight with Cross-App Sync
+
+When using Astro/Starlight alongside other Cloudflare applications, ensure theme preferences sync correctly:
+
+```typescript
+// src/components/ThemeToggle.astro
+---
+import { 
+  setDarkModeFromStrategy, 
+  DarkModeNamingStrategy,
+  getInlineThemeScript,
+  type InlineThemeScriptConfig
+} from '@cloudflare/style-const';
+
+// Configuration for Astro/Starlight
+const ssrConfig: InlineThemeScriptConfig = {
+  namingStrategy: DarkModeNamingStrategy.ASTRO,
+  storageKey: 'starlight-theme',
+  themeAttribute: 'data-theme'
+};
+---
+
+<script define:vars={{ ssrConfig }}>
+  // Prevent FOUC with inline script
+  const script = document.createElement('script');
+  script.innerHTML = getInlineThemeScript('auto', ssrConfig);
+  document.head.insertBefore(script, document.head.firstChild);
+</script>
+
+<button id="theme-toggle">Toggle Theme</button>
+
+<script>
+  import { 
+    setDarkModeFromStrategy, 
+    DarkModeNamingStrategy 
+  } from '@cloudflare/style-const';
+
+  document.getElementById('theme-toggle')?.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const newTheme = current === 'dark' ? 'light' : 'dark';
+    
+    // Automatically normalizes 'dark'/'light' to 'on'/'off' in cookie
+    setDarkModeFromStrategy(newTheme, DarkModeNamingStrategy.ASTRO);
+  });
+</script>
+```
+
+**What this does:**
+- ✅ Stores `'dark'` as `'on'` in cookie (readable by other apps)
+- ✅ Stores `'light'` as `'off'` in cookie
+- ✅ Stores `'auto'` as `'system'` in cookie
+- ✅ Prevents FOUC with attribute-based theming
+- ✅ Syncs with other Cloudflare applications
+
 ---
 
 ## FAQ
@@ -559,6 +613,9 @@ A: Yes! Listens to `prefers-color-scheme` changes automatically.
 
 **Q: Can I customize the class name?**  
 A: Yes! Use `setDarkModeKey('your-class-name')`.
+
+**Q: Does it work with Astro/Starlight?**  
+A: Yes! Use `setDarkModeFromStrategy()` to automatically normalize values. `'auto'` becomes `'system'` in the cookie so other apps can read it.
 
 **Q: Does it block rendering?**  
 A: No! Inline script is tiny (<200 bytes minified) and runs before CSS.

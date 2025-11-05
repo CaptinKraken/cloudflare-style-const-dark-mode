@@ -6,6 +6,7 @@ This guide covers the enhanced integration features for consuming applications u
 
 1. [Event-Based Integration](#event-based-integration)
 2. [Naming Strategy Support](#naming-strategy-support)
+   - [Cross-App Cookie Interoperability (Astro/Starlight)](#cross-app-cookie-interoperability-astrostarlight)
 3. [Timestamp-Based Conflict Resolution](#timestamp-based-conflict-resolution)
 4. [Complete Examples](#complete-examples)
 
@@ -171,6 +172,45 @@ For Astro-style applications, there's a dedicated type:
 import type { AstroDarkModeSettings } from '@cloudflare/style-const';
 
 const theme: AstroDarkModeSettings = 'dark'; // 'dark' | 'light' | 'auto'
+```
+
+### Cross-App Cookie Interoperability (Astro/Starlight)
+
+When using Astro/Starlight with other Cloudflare applications, you need to ensure that theme preferences are stored consistently in the cookie so all apps can read them correctly.
+
+**The Challenge**: Starlight uses `'auto'`, but Cloudflare apps expect `'system'` in the cookie.
+
+**The Solution**: Use `setDarkModeFromStrategy()` to automatically normalize values before storing:
+
+```typescript
+import { setDarkModeFromStrategy, DarkModeNamingStrategy } from '@cloudflare/style-const';
+
+// When user selects a theme in Starlight
+function handleThemeChange(newTheme: 'dark' | 'light' | 'auto') {
+  // Automatically converts 'auto' → 'system' before storing in cookie
+  setDarkModeFromStrategy(newTheme, DarkModeNamingStrategy.ASTRO);
+}
+```
+
+**What Happens**:
+- `'auto'` → stored as `'system'` in cookie
+- `'dark'` → stored as `'on'` in cookie
+- `'light'` → stored as `'off'` in cookie
+
+This ensures:
+- ✅ Starlight users' preferences are respected across all apps
+- ✅ Other Cloudflare applications can read and sync the setting
+- ✅ Cross-app synchronization works seamlessly
+
+**Alternative: Manual Normalization**
+
+If you need to normalize values without updating the setting:
+
+```typescript
+import { normalizeToCloudflareFormat, DarkModeNamingStrategy } from '@cloudflare/style-const';
+
+const normalized = normalizeToCloudflareFormat('auto', DarkModeNamingStrategy.ASTRO);
+console.log(normalized); // 'system'
 ```
 
 ---
