@@ -14,199 +14,52 @@ import {
   DARK_MODE_CHANGE_EVENT,
   DARK_MODE_COOKIE_NAME,
   DARK_MODE_MESSAGE_TYPE,
-  DEFAULT_DARK_MODE_CLASS,
   LOCAL_DEV_HOSTS,
   TRUSTED_CLOUDFLARE_ORIGINS
 } from './constants';
+import {
+  getDarkModeCookieWithTimestamp,
+  setDarkModeCookie
+} from './darkMode/storage';
+import {
+  setDarkModeKey,
+  getDarkModeKey,
+  isDarkMode,
+  toggleDarkMode
+} from './darkMode/dom';
+import { translateSetting, isLocalDevelopment } from './darkMode/utils';
+import {
+  getDarkModeCookieName,
+  getDarkModeFromRequest,
+  getDarkModeFromCookieHeader,
+  getInlineThemeScript,
+  type InlineThemeScriptConfig
+} from './darkMode/ssr';
+import {
+  DarkModeSettings,
+  DarkModeNamingStrategy,
+  AstroDarkModeSettings,
+  DarkModeChangeEventDetail,
+  DarkModeChangeEvent
+} from './darkMode/types';
 
-let darkModeClassName = DEFAULT_DARK_MODE_CLASS;
-
-/**
- * Get the dark mode cookie value including timestamp
- * Cookie format: "value:timestamp" (e.g., "on:1699564800000")
- * Returns { value, timestamp } or null
- */
-const getDarkModeCookieWithTimestamp = (): {
-  value: string;
-  timestamp: number;
-} | null => {
-  if (typeof document === 'undefined') return null;
-
-  const matches = document.cookie.match(
-    new RegExp(
-      '(?:^|; )' +
-        DARK_MODE_COOKIE_NAME.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') +
-        '=([^;]*)'
-    )
-  );
-
-  if (!matches) return null;
-
-  const cookieValue = decodeURIComponent(matches[1]);
-  const parts = cookieValue.split(':');
-
-  // Format: value:timestamp or just value (backward compat)
-  const settingValue = parts[0];
-  const timestamp = parts[1] ? parseInt(parts[1], 10) : 0;
-
-  return { value: settingValue, timestamp };
+// Re-export types and enums
+export { DarkModeSettings, DarkModeNamingStrategy };
+export type {
+  AstroDarkModeSettings,
+  DarkModeChangeEventDetail,
+  DarkModeChangeEvent,
+  InlineThemeScriptConfig
 };
 
-/**
- * Set a cookie on the apex domain (.cloudflare.com)
- * This allows sharing dark mode preference across dashboard.cloudflare.com and developer.cloudflare.com
- */
-const setCookie = (name: string, value: string, days = 365) => {
-  if (typeof document === 'undefined') return;
+// Re-export DOM utilities
+export { setDarkModeKey, isDarkMode, toggleDarkMode };
 
-  const date = new Date();
-  date.setTime(date.getTime() + days * 24 * 60 * 60 * 1000);
+// Re-export SSR utilities
+export { getDarkModeCookieName, getDarkModeFromRequest, getDarkModeFromCookieHeader, getInlineThemeScript };
 
-  // Determine if we're on a cloudflare.com domain
-  const hostname = window.location.hostname;
-  const isCloudflare =
-    hostname.endsWith(CLOUDFLARE_DOMAIN_SUFFIX) ||
-    hostname === CLOUDFLARE_APEX_HOST;
-  const domain = isCloudflare ? CLOUDFLARE_DOMAIN_SUFFIX : '';
-
-  document.cookie = `${name}=${encodeURIComponent(
-    value
-  )}; expires=${date.toUTCString()}; path=/; ${
-    domain ? `domain=${domain}; ` : ''
-  }SameSite=Lax; Secure`;
-};
-
-/**
- * Set the dark mode cookie with both value and timestamp
- * Format: value:timestamp (e.g., "on:1699564800000")
- */
-const setDarkModeCookie = (value: string, timestamp: number) => {
-  const cookieValue = `${value}:${timestamp}`;
-  setCookie(DARK_MODE_COOKIE_NAME, cookieValue);
-};
-
-/**
- * Translate between Cloudflare and Astro naming conventions
- */
-const translateSetting = (
-  value: string,
-  fromStrategy: DarkModeNamingStrategy,
-  toStrategy: DarkModeNamingStrategy
-): string => {
-  if (fromStrategy === toStrategy) return value;
-
-  const translations: Record<string, Record<string, string>> = {
-    [DarkModeNamingStrategy.CLOUDFLARE]: {
-      on: 'dark',
-      off: 'light',
-      system: 'auto'
-    },
-    [DarkModeNamingStrategy.ASTRO]: {
-      dark: 'on',
-      light: 'off',
-      auto: 'system'
-    }
-  };
-
-  return translations[fromStrategy]?.[value] || value;
-};
-
-export enum DarkModeSettings {
-  ON = 'on',
-  OFF = 'off',
-  SYSTEM = 'system'
-}
-
-/**
- * Alternative naming strategies for dark mode settings
- * Useful for frameworks like Astro/Starlight that use different conventions
- */
-export enum DarkModeNamingStrategy {
-  /** Cloudflare default: 'on' | 'off' | 'system' */
-  CLOUDFLARE = 'cloudflare',
-  /** Astro/Starlight style: 'dark' | 'light' | 'auto' */
-  ASTRO = 'astro'
-}
-
-/**
- * Type for Astro-style dark mode settings
- */
-export type AstroDarkModeSettings = 'dark' | 'light' | 'auto';
-
-/**
- * Event detail for dark mode change events
- */
-export interface DarkModeChangeEventDetail {
-  /** The dark mode setting value */
-  setting: DarkModeSettings;
-  /** Whether dark mode is currently active (computed from setting + system preference) */
-  isDark: boolean;
-  /** Timestamp of when this change occurred */
-  timestamp: number;
-  /** The naming strategy being used */
-  namingStrategy: DarkModeNamingStrategy;
-  /** The setting value in the current naming strategy */
-  value: string;
-}
-
-/**
- * Custom event type for dark mode changes
- */
-export interface DarkModeChangeEvent
-  extends CustomEvent<DarkModeChangeEventDetail> {
-  type: typeof DARK_MODE_CHANGE_EVENT;
-}
-
-// Defensive checks in case component library is used outside the browser
-// E.g. server side rendering
-const classList =
-  typeof document !== 'undefined' && document.documentElement.classList;
-
-/**
- * Allow customizing the class name/local storage key used for dark mode.
- * By default, it will also remove the old key from local storage and add the new one.
- *
- * @example
- * // For Tailwind CSS (uses 'dark' class instead of 'dark-mode')
- * setDarkModeKey('dark');
- *
- * @example
- * // For custom class name
- * setDarkModeKey('theme-dark');
- */
-export const setDarkModeKey = (newKey: string, updateStorage = true) => {
-  if (!newKey || newKey === darkModeClassName) {
-    return;
-  }
-
-  const prevKey = darkModeClassName;
-  darkModeClassName = newKey;
-
-  if (updateStorage) {
-    if (typeof localStorage === 'undefined') {
-      return;
-    }
-
-    if (localStorage[newKey]) {
-      // If there's a setting stored for the new key, use it.
-      setDarkMode(localStorage[newKey], true);
-    } else if (localStorage[prevKey]) {
-      // If there's a setting stored for the old key, copy it over.
-      localStorage.setItem(newKey, localStorage[prevKey]);
-    }
-
-    localStorage.removeItem(prevKey);
-  }
-};
-
-export const isDarkMode = () =>
-  classList && classList.contains(darkModeClassName);
-
-export const toggleDarkMode = (condition?: boolean) => {
-  if (classList) {
-    classList.toggle(darkModeClassName, condition);
-  }
-};
+// Re-export utilities
+export { isLocalDevelopment };
 
 const darkModeMatch =
   typeof window !== 'undefined' &&
@@ -340,7 +193,7 @@ class DarkModeSyncManager {
     }
 
     // Priority 2: localStorage (backwards compatibility)
-    const localValue = localStorage[darkModeClassName] as DarkModeSettings;
+    const localValue = localStorage[getDarkModeKey()] as DarkModeSettings;
     if (localValue && Object.values(DarkModeSettings).includes(localValue)) {
       // Sync to cookie for future cross-subdomain access
       const timestamp = Date.now();
@@ -369,7 +222,7 @@ class DarkModeSyncManager {
 
     // Sync to storage if requested
     if (shouldSync && typeof localStorage !== 'undefined') {
-      localStorage[darkModeClassName] = setting;
+      localStorage[getDarkModeKey()] = setting;
       setDarkModeCookie(setting, ts);
       this.broadcastToIframes(setting, ts);
     }
@@ -383,7 +236,7 @@ class DarkModeSyncManager {
    */
   private setupStorageSync() {
     this.storageEventHandler = (e: StorageEvent) => {
-      if (e.key === darkModeClassName && e.newValue) {
+      if (e.key === getDarkModeKey() && e.newValue) {
         const newSetting = e.newValue as DarkModeSettings;
         if (Object.values(DarkModeSettings).includes(newSetting)) {
           this.updateSetting(newSetting, false); // Don't re-sync to avoid loops
@@ -691,138 +544,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
 export const getDarkModeSetting = () => syncManager.getSetting();
 
 /**
- * Get the cookie name used for cross-subdomain dark mode sync.
- * Useful if you need to reference it in your own code.
- *
- * @example
- * const cookieName = getDarkModeCookieName(); // 'cf_dark_mode'
- */
-export const getDarkModeCookieName = () => DARK_MODE_COOKIE_NAME;
-
-/**
- * Parse dark mode setting from request (supports both x-dark-mode header and cookie).
- *
- * Checks in order:
- * 1. x-dark-mode header (if your infrastructure sets it from the cookie)
- * 2. cf_dark_mode cookie (parsed from Cookie header)
- *
- * @param request - The Request object or headers
- * @returns The dark mode setting ('on', 'off', or 'system')
- *
- * @example
- * // React Router v7 / Remix (with Request object)
- * export async function loader({ request }) {
- *   const darkModeSetting = getDarkModeFromRequest(request);
- *   return { darkModeSetting };
- * }
- *
- * @example
- * // With Headers object
- * export async function loader({ request }) {
- *   const darkModeSetting = getDarkModeFromRequest(request.headers);
- *   return { darkModeSetting };
- * }
- */
-export const getDarkModeFromRequest = (
-  request: Request | Headers
-): DarkModeSettings => {
-  const headers = request instanceof Request ? request.headers : request;
-
-  // Priority 1: Check x-dark-mode header (if set by middleware/CDN)
-  const headerValue = headers.get('x-dark-mode');
-  if (headerValue) {
-    const value = headerValue as DarkModeSettings;
-    if (Object.values(DarkModeSettings).includes(value)) {
-      return value;
-    }
-  }
-
-  // Priority 2: Parse from cookie header
-  const cookieHeader = headers.get('Cookie') || '';
-  return getDarkModeFromCookieHeader(cookieHeader);
-};
-
-/**
- * Parse dark mode setting from cookie header (for server-side rendering).
- * Use this in your SSR loaders to read the dark mode preference from request cookies.
- *
- * Note: If your infrastructure sets the x-dark-mode header from the cookie,
- * use getDarkModeFromRequest() instead as it's simpler.
- *
- * @param cookieHeader - The Cookie header string from the HTTP request
- * @returns The dark mode setting ('on', 'off', or 'system')
- *
- * @example
- * // React Router v7 / Remix
- * export async function loader({ request }) {
- *   const cookieHeader = request.headers.get('Cookie') || '';
- *   const darkModeSetting = getDarkModeFromCookieHeader(cookieHeader);
- *   return { darkModeSetting };
- * }
- *
- * @example
- * // Next.js App Router
- * import { cookies } from 'next/headers';
- * const cookieStore = await cookies();
- * const darkModeCookie = cookieStore.get('cf_dark_mode');
- * const darkModeSetting = darkModeCookie?.value || 'off';
- */
-export const getDarkModeFromCookieHeader = (
-  cookieHeader: string
-): DarkModeSettings => {
-  const match = cookieHeader.match(
-    new RegExp('(?:^|; )' + DARK_MODE_COOKIE_NAME + '=([^;]*)')
-  );
-  if (match) {
-    const cookieValue = decodeURIComponent(match[1]);
-    // Parse format: "value:timestamp" or just "value" (backward compat)
-    const value = cookieValue.split(':')[0] as DarkModeSettings;
-    if (Object.values(DarkModeSettings).includes(value)) {
-      return value;
-    }
-  }
-  return DarkModeSettings.OFF;
-};
-
-/**
- * Generate inline script code to prevent flash of unstyled content in SSR apps.
- * This script should be placed in the <head> before any CSS loads.
- *
- * @param fallbackSetting - Optional fallback setting if no cookie is found
- * @returns JavaScript code as a string to be inserted in a <script> tag
- *
- * @example
- * // React Router / Remix / Next.js
- * <script dangerouslySetInnerHTML={{ __html: getInlineThemeScript('off') }} />
- *
- * @example
- * // With server-loaded setting
- * const { darkModeSetting } = useLoaderData();
- * <script dangerouslySetInnerHTML={{ __html: getInlineThemeScript(darkModeSetting) }} />
- */
-export const getInlineThemeScript = (
-  fallbackSetting: DarkModeSettings = DarkModeSettings.OFF
-): string => {
-  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var cv=c?decodeURIComponent(c[1]):'${fallbackSetting}';var v=cv.split(':')[0];var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');}catch(e){}})();`;
-};
-
-/**
- * Check if running in local development environment.
- * Useful for debugging or conditional behavior.
- *
- * @returns true if on localhost/127.0.0.1, false otherwise
- */
-export const isLocalDevelopment = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  const hostname = window.location.hostname;
-  return (
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1' ||
-    hostname === '0.0.0.0'
-  );
-};
-
-/**
  * Reset dark mode state (useful for testing).
  * Clears cookie, localStorage, and resets to default.
  *
@@ -842,7 +563,7 @@ export const resetDarkMode = () => {
 
   // Clear localStorage
   if (typeof localStorage !== 'undefined') {
-    localStorage.removeItem(darkModeClassName);
+    localStorage.removeItem(getDarkModeKey());
   }
 
   // Reset to OFF
