@@ -45,6 +45,6 @@
     "strictPropertyInitialization": true,
     "target": "esnext"
   },
-  "exclude": ["node_modules", "./src/**/__tests__", "dist"],
+  "exclude": ["node_modules", "dist"],
   "include": ["./src/**/*.ts", "./src/**/*.tsx", "./types/*.d.ts"]
 }

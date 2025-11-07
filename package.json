@@ -17,7 +17,9 @@
     "build": "bash scripts/build.sh",
     "build:types": "tsc -p tsconfig.publish.json",
     "clean": "rimraf es lib dist",
-    "lint": "eslint \"**/*.{ts,tsx}\""
+    "lint": "eslint \"**/*.{ts,tsx}\"",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@babel/cli": "^7.20.7",
@@ -35,9 +37,13 @@
     "@babel/preset-env": "^7.20.7",
     "@babel/preset-react": "^7.20.7",
     "@babel/preset-typescript": "^7.20.7",
+    "@types/jest": "^29.5.0",
     "babel-loader": "^8.2.5",
     "babel-plugin-dynamic-import-node": "^2.3.3",
-    "pkg-pr-new": "^0.0.60"
+    "jest": "^29.5.0",
+    "jest-environment-jsdom": "^29.5.0",
+    "pkg-pr-new": "^0.0.60",
+    "ts-jest": "^29.1.0"
   },
   "resolutions": {
     "babel-loader": "8.0.4",
