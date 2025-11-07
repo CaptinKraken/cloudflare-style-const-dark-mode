@@ -78,6 +78,11 @@ export {
 };
 
 // Type-only exports for TypeScript isolatedModules
-export type { AstroDarkModeSettings, DarkModeChangeEventDetail, DarkModeChangeEvent, InlineThemeScriptConfig } from './darkMode';
+export type {
+  AstroDarkModeSettings,
+  DarkModeChangeEventDetail,
+  DarkModeChangeEvent,
+  InlineThemeScriptConfig
+} from './darkMode';
 
 export * from './variables';

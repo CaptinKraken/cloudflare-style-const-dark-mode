@@ -47,6 +47,19 @@ import {
   DarkModeChangeEvent
 } from './darkMode/types';
 
+// ----------------------------------------------------------------------------
+// Diagnostics & instrumentation types
+// ----------------------------------------------------------------------------
+export type DarkModeUpdateSource =
+  | 'direct'
+  | 'api'
+  | 'strategy'
+  | 'storage'
+  | 'cookie'
+  | 'postMessage'
+  | 'broadcast'
+  | 'reset';
+
 // Re-export types and enums
 export { DarkModeSettings, DarkModeNamingStrategy };
 export type {
@@ -90,7 +103,7 @@ export const setDarkMode = (
   darkMode: DarkModeSettings,
   updateStorage = true
 ) => {
-  syncManager.updateSetting(darkMode, updateStorage);
+  syncManager.updateSetting(darkMode, updateStorage, undefined, 'api');
 };
 
 /**
@@ -143,6 +156,7 @@ class DarkModeSyncManager {
   private broadcastChannel: BroadcastChannel | null = null;
   private eventListeners: Set<(detail: DarkModeChangeEventDetail) => void> =
     new Set();
+  private lastSourceTimestamp: Map<DarkModeUpdateSource, number> = new Map();
 
   /**
    * Initialize all sync mechanisms and return cleanup function
@@ -185,9 +199,19 @@ class DarkModeSyncManager {
   updateSetting(
     setting: DarkModeSettings,
     shouldSync: boolean = true,
-    timestamp?: number
+    timestamp?: number,
+    source: DarkModeUpdateSource = 'direct'
   ) {
-    const newTimestamp = timestamp || Date.now();
+    const newTimestamp = timestamp ?? Date.now();
+
+    if (source !== 'direct') {
+      const lastSourceTs = this.lastSourceTimestamp.get(source);
+      if (lastSourceTs && newTimestamp <= lastSourceTs) {
+        return;
+      }
+    }
+
+    this.lastSourceTimestamp.set(source, newTimestamp);
     this.currentSetting = setting;
     this.currentTimestamp = newTimestamp;
     this.applySetting(setting, shouldSync, newTimestamp);
@@ -219,7 +243,8 @@ class DarkModeSyncManager {
       this.updateSetting(
         normalizedValue as DarkModeSettings,
         shouldSync,
-        timestamp
+        timestamp,
+        'strategy'
       );
     }
   }
@@ -229,6 +254,13 @@ class DarkModeSyncManager {
    */
   getSetting(): DarkModeSettings {
     return this.currentSetting;
+  }
+
+  /**
+   * Get the timestamp of the last dark mode change
+   */
+  getTimestamp(): number {
+    return this.currentTimestamp;
   }
 
   // ==================== Private Methods ====================
@@ -315,10 +347,8 @@ class DarkModeSyncManager {
       this.broadcastToIframes(setting, ts);
     }
 
-    // Only emit events when syncing is enabled to prevent loops
-    if (shouldSync) {
-      this.emitChangeEvent(setting, isDark, ts);
-    }
+    // Always emit events so listeners stay in sync, even for passive updates
+    this.emitChangeEvent(setting, isDark, ts);
   }
 
   /**
@@ -329,7 +359,7 @@ class DarkModeSyncManager {
       if (e.key === getDarkModeKey() && e.newValue) {
         const newSetting = e.newValue as DarkModeSettings;
         if (Object.values(DarkModeSettings).includes(newSetting)) {
-          this.updateSetting(newSetting, false); // Don't re-sync to avoid loops
+          this.updateSetting(newSetting, false, undefined, 'storage');
         }
       }
     };
@@ -347,7 +377,7 @@ class DarkModeSyncManager {
   }
 
   /**
-   * Set up postMessage for iframe sync (automatic fallback for blocked cookies)
+   * Set up postMessage for iframe sync (automatic fallback for blocked cookies) necessary
    */
   private setupPostMessageSync() {
     this.messageEventHandler = (event: MessageEvent) => {
@@ -362,9 +392,7 @@ class DarkModeSyncManager {
         const timestamp = event.data.timestamp as number;
         if (Object.values(DarkModeSettings).includes(newSetting)) {
           // Only update if timestamp is newer
-          if (!timestamp || timestamp > this.currentTimestamp) {
-            this.updateSetting(newSetting, false, timestamp); // Don't re-sync to avoid loops
-          }
+          this.updateSetting(newSetting, false, timestamp, 'postMessage');
         }
       }
     };
@@ -425,6 +453,7 @@ class DarkModeSyncManager {
       this.broadcastChannel.close();
       this.broadcastChannel = null;
     }
+    this.lastSourceTimestamp.clear();
     this.isInitialized = false;
   }
 
@@ -445,7 +474,7 @@ class DarkModeSyncManager {
         Object.values(DarkModeSettings).includes(newSetting) &&
         (!timestamp || timestamp > this.currentTimestamp)
       ) {
-        this.updateSetting(newSetting, false, timestamp);
+        this.updateSetting(newSetting, false, timestamp, 'broadcast');
       }
     };
   }
@@ -498,7 +527,8 @@ class DarkModeSyncManager {
       this.updateSetting(
         cookieData.value as DarkModeSettings,
         false,
-        cookieData.timestamp
+        cookieData.timestamp,
+        'cookie'
       );
     }
   }
@@ -549,6 +579,9 @@ class DarkModeSyncManager {
    * Add an event listener for dark mode changes
    */
   addEventListener(listener: (detail: DarkModeChangeEventDetail) => void) {
+    if (this.eventListeners.has(listener)) {
+      return;
+    }
     this.eventListeners.add(listener);
   }
 
@@ -556,14 +589,9 @@ class DarkModeSyncManager {
    * Remove an event listener
    */
   removeEventListener(listener: (detail: DarkModeChangeEventDetail) => void) {
-    this.eventListeners.delete(listener);
-  }
-
-  /**
-   * Get the current timestamp
-   */
-  getTimestamp(): number {
-    return this.currentTimestamp;
+    if (this.eventListeners.delete(listener)) {
+      return;
+    }
   }
 
   /**
@@ -658,7 +686,7 @@ export const resetDarkMode = () => {
   }
 
   // Reset to OFF
-  syncManager.updateSetting(DarkModeSettings.OFF, false);
+  syncManager.updateSetting(DarkModeSettings.OFF, false, undefined, 'reset');
 };
 
 /**
