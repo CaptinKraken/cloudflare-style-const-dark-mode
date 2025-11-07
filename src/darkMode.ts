@@ -242,12 +242,21 @@ class DarkModeSyncManager {
     }
 
     // Priority 2: localStorage (backwards compatibility)
-    const localValue = localStorage[getDarkModeKey()] as DarkModeSettings;
-    if (localValue && Object.values(DarkModeSettings).includes(localValue)) {
-      // Sync to cookie for future cross-subdomain access
-      const timestamp = Date.now();
-      setDarkModeCookie(localValue, timestamp);
-      return { setting: localValue, timestamp };
+    const localValue = localStorage[getDarkModeKey()];
+    if (localValue) {
+      // Translate from current naming strategy to Cloudflare format
+      const normalizedValue = translateSetting(
+        localValue,
+        this.namingStrategy,
+        DarkModeNamingStrategy.CLOUDFLARE
+      );
+      
+      if (Object.values(DarkModeSettings).includes(normalizedValue as DarkModeSettings)) {
+        // Sync to cookie for future cross-subdomain access
+        const timestamp = Date.now();
+        setDarkModeCookie(normalizedValue as DarkModeSettings, timestamp);
+        return { setting: normalizedValue as DarkModeSettings, timestamp };
+      }
     }
 
     return { setting: DarkModeSettings.OFF, timestamp: 0 };
@@ -271,7 +280,16 @@ class DarkModeSyncManager {
 
     // Sync to storage if requested
     if (shouldSync && typeof localStorage !== 'undefined') {
-      localStorage[getDarkModeKey()] = setting;
+      // Store in localStorage using the current naming strategy format
+      // This ensures Astro apps store 'auto' while Cloudflare apps store 'system'
+      const localStorageValue = translateSetting(
+        setting,
+        DarkModeNamingStrategy.CLOUDFLARE,
+        this.namingStrategy
+      );
+      localStorage[getDarkModeKey()] = localStorageValue;
+      
+      // Always store in Cloudflare format in cookies for cross-app compatibility
       setDarkModeCookie(setting, ts);
       this.broadcastToIframes(setting, ts);
     }
