@@ -27,7 +27,11 @@ import {
   isDarkMode,
   toggleDarkMode
 } from './darkMode/dom';
-import { translateSetting, isLocalDevelopment, normalizeToCloudflareFormat } from './darkMode/utils';
+import {
+  translateSetting,
+  isLocalDevelopment,
+  normalizeToCloudflareFormat
+} from './darkMode/utils';
 import {
   getDarkModeCookieName,
   getDarkModeFromRequest,
@@ -56,7 +60,12 @@ export type {
 export { setDarkModeKey, isDarkMode, toggleDarkMode };
 
 // Re-export SSR utilities
-export { getDarkModeCookieName, getDarkModeFromRequest, getDarkModeFromCookieHeader, getInlineThemeScript };
+export {
+  getDarkModeCookieName,
+  getDarkModeFromRequest,
+  getDarkModeFromCookieHeader,
+  getInlineThemeScript
+};
 
 // Re-export utilities
 export { isLocalDevelopment, normalizeToCloudflareFormat };
@@ -201,9 +210,17 @@ class DarkModeSyncManager {
       strategy,
       DarkModeNamingStrategy.CLOUDFLARE
     );
-    
-    if (Object.values(DarkModeSettings).includes(normalizedValue as DarkModeSettings)) {
-      this.updateSetting(normalizedValue as DarkModeSettings, shouldSync, timestamp);
+
+    if (
+      Object.values(DarkModeSettings).includes(
+        normalizedValue as DarkModeSettings
+      )
+    ) {
+      this.updateSetting(
+        normalizedValue as DarkModeSettings,
+        shouldSync,
+        timestamp
+      );
     }
   }
 
@@ -250,8 +267,12 @@ class DarkModeSyncManager {
         this.namingStrategy,
         DarkModeNamingStrategy.CLOUDFLARE
       );
-      
-      if (Object.values(DarkModeSettings).includes(normalizedValue as DarkModeSettings)) {
+
+      if (
+        Object.values(DarkModeSettings).includes(
+          normalizedValue as DarkModeSettings
+        )
+      ) {
         // Sync to cookie for future cross-subdomain access
         const timestamp = Date.now();
         setDarkModeCookie(normalizedValue as DarkModeSettings, timestamp);
@@ -288,7 +309,7 @@ class DarkModeSyncManager {
         this.namingStrategy
       );
       localStorage[getDarkModeKey()] = localStorageValue;
-      
+
       // Always store in Cloudflare format in cookies for cross-app compatibility
       setDarkModeCookie(setting, ts);
       this.broadcastToIframes(setting, ts);
@@ -451,7 +472,8 @@ class DarkModeSyncManager {
 
       if (
         isLocalDevelopment() &&
-        (LOCAL_DEV_HOSTS.has(host) || host === window.location.hostname)
+        (LOCAL_DEV_HOSTS.has(host) ||
+          LOCAL_DEV_HOSTS.has(window.location.hostname))
       ) {
         return true;
       }
