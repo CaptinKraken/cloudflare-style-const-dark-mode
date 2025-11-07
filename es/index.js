@@ -9,16 +9,16 @@ import {
 // Core types and enums
 DarkModeSettings, DarkModeNamingStrategy,
 // Core functions
-getDarkModeSetting, getDarkModeCookieName, getDarkModeFromCookieHeader, getDarkModeFromRequest, getInlineThemeScript, initDarkMode, isDarkMode, isLocalDevelopment, observeDarkMode, resetDarkMode, setDarkMode, setDarkModeKey, toggleDarkMode,
+getDarkModeSetting, getDarkModeCookieName, getDarkModeFromCookieHeader, getDarkModeFromRequest, getInlineThemeScript, initDarkMode, isDarkMode, isLocalDevelopment, observeDarkMode, resetDarkMode, setDarkMode, setDarkModeFromStrategy, setDarkModeKey, toggleDarkMode,
 // Enhanced integration API
-addDarkModeChangeListener, removeDarkModeChangeListener, getDarkModeTimestamp, setDarkModeNamingStrategy, getDarkModeNamingStrategy, translateDarkModeSetting, isDarkModeNewerThan } from './darkMode';
+addDarkModeChangeListener, removeDarkModeChangeListener, getDarkModeTimestamp, setDarkModeNamingStrategy, getDarkModeNamingStrategy, translateDarkModeSetting, isDarkModeNewerThan, normalizeToCloudflareFormat } from './darkMode';
 export { variables, variables as theme,
 // Dark mode core functions
-isDarkMode, toggleDarkMode, setDarkMode, setDarkModeKey, observeDarkMode, getDarkModeSetting, DarkModeSettings,
+isDarkMode, toggleDarkMode, setDarkMode, setDarkModeFromStrategy, setDarkModeKey, observeDarkMode, getDarkModeSetting, DarkModeSettings,
 // Dark mode SSR helpers
 initDarkMode, getDarkModeCookieName, getDarkModeFromRequest, getDarkModeFromCookieHeader, getInlineThemeScript,
 // Dark mode utilities
-isLocalDevelopment, resetDarkMode,
+isLocalDevelopment, normalizeToCloudflareFormat, resetDarkMode,
 // Enhanced integration API
 addDarkModeChangeListener, removeDarkModeChangeListener, getDarkModeTimestamp, setDarkModeNamingStrategy, getDarkModeNamingStrategy, translateDarkModeSetting, isDarkModeNewerThan,
 // Enums
