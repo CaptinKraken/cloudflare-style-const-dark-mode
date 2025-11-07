@@ -315,8 +315,10 @@ class DarkModeSyncManager {
       this.broadcastToIframes(setting, ts);
     }
 
-    // Emit custom event for consuming applications
-    this.emitChangeEvent(setting, isDark, ts);
+    // Only emit events when syncing is enabled to prevent loops
+    if (shouldSync) {
+      this.emitChangeEvent(setting, isDark, ts);
+    }
   }
 
   /**
