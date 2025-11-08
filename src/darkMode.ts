@@ -204,11 +204,10 @@ class DarkModeSyncManager {
   ) {
     const newTimestamp = timestamp ?? Date.now();
 
-    if (source !== 'direct') {
-      const lastSourceTs = this.lastSourceTimestamp.get(source);
-      if (lastSourceTs && newTimestamp <= lastSourceTs) {
-        return;
-      }
+    // Reject updates with timestamps older than or equal to the current state
+    // This implements "last action wins" - only newer updates override the current setting
+    if (newTimestamp <= this.currentTimestamp) {
+      return;
     }
 
     this.lastSourceTimestamp.set(source, newTimestamp);
@@ -607,6 +606,17 @@ class DarkModeSyncManager {
   getNamingStrategy(): DarkModeNamingStrategy {
     return this.namingStrategy;
   }
+
+  /**
+   * Reset internal state (for testing)
+   */
+  reset() {
+    this.currentSetting = DarkModeSettings.OFF;
+    this.currentTimestamp = 0;
+    this.isInitialized = false;
+    this.lastSourceTimestamp.clear();
+    this.cleanup();
+  }
 }
 
 // Singleton instance
@@ -685,8 +695,8 @@ export const resetDarkMode = () => {
     localStorage.removeItem(getDarkModeKey());
   }
 
-  // Reset to OFF
-  syncManager.updateSetting(DarkModeSettings.OFF, false, undefined, 'reset');
+  // Reset sync manager internal state
+  syncManager.reset();
 };
 
 /**
