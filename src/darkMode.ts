@@ -330,6 +330,11 @@ class DarkModeSyncManager {
       (setting === DarkModeSettings.SYSTEM && systemDarkMode);
     toggleDarkMode(isDark);
 
+    // Set color-scheme for modern CSS light-dark() support
+    if (typeof document !== 'undefined' && document.documentElement) {
+      document.documentElement.style.setProperty('color-scheme', isDark ? 'dark' : 'light');
+    }
+
     // Sync to storage if requested
     if (shouldSync && typeof localStorage !== 'undefined') {
       // Store in localStorage using the current naming strategy format

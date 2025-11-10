@@ -156,6 +156,6 @@ export const getInlineThemeScript = (
     return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var cv=c?decodeURIComponent(c[1]):'${fallbackSetting}';var v=cv.split(':')[0];var t=v==='on'?'dark':v==='off'?'light':'auto';var dt=t;if(t==='auto'){dt=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('${themeAttribute}',dt);try{localStorage.setItem('${storageKey}',t);}catch(e){}}catch(e){}})();`;
   }
 
-  // Cloudflare: class-based (default)
-  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var cv=c?decodeURIComponent(c[1]):'${fallbackSetting}';var v=cv.split(':')[0];var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s)document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');}catch(e){}})();`;
+  // Cloudflare: class-based (default) with color-scheme support
+  return `(function(){try{var c=document.cookie.match(/${DARK_MODE_COOKIE_NAME}=([^;]*)/);var cv=c?decodeURIComponent(c[1]):'${fallbackSetting}';var v=cv.split(':')[0];var d=window.matchMedia('(prefers-color-scheme: dark)').matches;var s=v==='on'||(v==='system'&&d);if(s){document.documentElement.classList.add('${DEFAULT_DARK_MODE_CLASS}');document.documentElement.style.setProperty('color-scheme','dark');}else{document.documentElement.style.setProperty('color-scheme','light');}}catch(e){}})();`;
 };
